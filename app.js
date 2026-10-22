@@ -258,16 +258,7 @@ summaryTotal.textContent =
         row.append(title, amount, edit);
         section.appendChild(row);
       });
-      const totals = sumForMonth(key);
-
-const total = document.createElement("div");
-total.className = "month-total-line";
-total.innerHTML = `
-  <div>Bank Expenses: ${money(totals.bank)}</div>
-  <div>Cash Expenses: ${money(totals.cash)}</div>
-  <div>Total: ${money(totals.total)}</div>
-`;
-section.appendChild(total);
+      
     
       list.appendChild(section);
     });
