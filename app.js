@@ -184,11 +184,23 @@ summaryTotal.textContent =
       const section = document.createElement("section");
       section.className = "month-section";
       section.dataset.month = key;
-      const heading = document.createElement("h2");
-      heading.className = "month-heading";
-      heading.textContent = monthLabel(key);
-      heading.addEventListener("click", () => updateSummary(key));
-      section.appendChild(heading);
+      const headingRow = document.createElement("div");
+headingRow.className = "month-heading-row";
+
+const heading = document.createElement("h2");
+heading.className = "month-heading";
+heading.textContent = monthLabel(key);
+
+const monthTotals = sumForMonth(key);
+const monthSummary = document.createElement("div");
+monthSummary.className = "month-inline-summary";
+monthSummary.innerHTML = `
+  <div>Bank ${money(monthTotals.bank)}</div>
+  <div>Cash ${money(monthTotals.cash)}</div>
+  <div>Total ${money(monthTotals.total)}</div>
+`;
+headingRow.append(heading, monthSummary);
+section.appendChild(headingRow);
 
       const form = document.createElement("form");
       form.className = "month-form";
@@ -258,7 +270,9 @@ summaryTotal.textContent =
         row.append(title, amount, edit);
         section.appendChild(row);
       });
-      
+      const totals = sumForMonth(key);
+
+
     
       list.appendChild(section);
     });
