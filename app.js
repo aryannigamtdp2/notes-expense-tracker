@@ -87,16 +87,27 @@
     clearTimeout(statusTimer);
     statusTimer = setTimeout(() => { status.textContent = ""; }, 2400);
   }
-  function parseEntry(raw) {
-    const text = raw.trim();
-    if (!text) return null;
-    const match = text.match(/^(.*?)(?:\s*[.·]\s*|\s+)(?:₹\s*)?(-?\d[\d,]*(?:\.\d{1,2})?)\s*$/);
-    if (!match) return { title: text, amount: null };
-    const title = match[1].trim().replace(/[.·]\s*$/, "").trim();
-    const amount = Number(match[2].replace(/,/g, ""));
-    if (!title || !Number.isFinite(amount) || amount < 0) return null;
-    return { title, amount };
+ function parseEntry(raw) {
+  let text = raw.trim();
+  if (!text) return null;
+
+  let paymentType = "bank";
+
+  if (/\s*\(cash\)\s*$/i.test(text)) {
+    paymentType = "cash";
+    text = text.replace(/\s*\(cash\)\s*$/i, "").trim();
   }
+
+  const match = text.match(/^(.*?)(?:\s*[.·]\s*|\s+)(?:₹\s*)?(-?\d[\d,]*(?:\.\d{1,2})?)\s*$/);
+  if (!match) return { title: text, amount: null, paymentType };
+
+  const title = match[1].trim().replace(/[.·]\s*$/, "").trim();
+  const amount = Number(match[2].replace(/,/g, ""));
+
+  if (!title || !Number.isFinite(amount) || amount < 0) return null;
+
+  return { title, amount, paymentType };
+}
   function parseMonthCommand(raw, fromMonth) {
     const text = raw.trim().replace(/[.!]+$/, "").trim();
     const match = text.match(/^(January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+(\d{4}))?$/i);
@@ -121,13 +132,26 @@
     return [...set].sort();
   }
   function sumForMonth(key) {
-    return expenses.filter(e => e.date.slice(0, 7) === key).reduce((sum, e) => sum + Number(e.amount || 0), 0) + Number(settings.autopay || 0);
-  }
+  const monthExpenses = expenses.filter(e => e.date.slice(0, 7) === key);
+
+  const bank = monthExpenses
+    .filter(e => e.paymentType !== "cash")
+    .reduce((sum, e) => sum + Number(e.amount || 0), 0)
+    + Number(settings.autopay || 0);
+
+  const cash = monthExpenses
+    .filter(e => e.paymentType === "cash")
+    .reduce((sum, e) => sum + Number(e.amount || 0), 0);
+
+  return { bank, cash, total: bank + cash };
+}
   function updateSummary(key) {
     if (!key) return;
     activeMonth = key;
     summaryMonth.textContent = monthLabel(key);
-    summaryTotal.textContent = `Total ${money(sumForMonth(key))}`;
+    const totals = sumForMonth(key);
+summaryTotal.textContent =
+  `Bank ${money(totals.bank)} · Cash ${money(totals.cash)} · Total ${money(totals.total)}`;
     document.title = `${monthLabel(key)} · Expenses`;
   }
   function addMonth(key) {
@@ -194,7 +218,14 @@
         }
         const parsed = parseEntry(raw);
         if (!parsed || parsed.amount === null) { flash("Enter description and amount", true); return; }
-        const item = { id: id(), title: parsed.title, amount: parsed.amount, date: dateForMonth(key), createdAt: Date.now() };
+        const item = {
+  id: id(),
+  title: parsed.title,
+  amount: parsed.amount,
+  paymentType: parsed.paymentType,
+  date: dateForMonth(key),
+  createdAt: Date.now()
+};
         try {
           await putExpense(item);
           input.value = "";
@@ -206,7 +237,7 @@
       section.appendChild(form);
 
       const monthExpenses = expenses.filter(e => e.date.slice(0, 7) === key)
-        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
       monthExpenses.forEach(item => {
         const row = document.createElement("div");
         row.className = "expense-row";
@@ -224,7 +255,16 @@
         row.append(title, amount, edit);
         section.appendChild(row);
       });
-      const total = document.createElement("div");
+      const totals = sumForMonth(key);
+
+const total = document.createElement("div");
+total.className = "month-total-line";
+total.innerHTML = `
+  <div>Bank Expenses: ${money(totals.bank)}</div>
+  <div>Cash Expenses: ${money(totals.cash)}</div>
+  <div>Total: ${money(totals.total)}</div>
+`;
+section.appendChild(total);
       total.className = "month-total-line";
       total.textContent = `Total ${money(sumForMonth(key))}`;
       section.appendChild(total);
