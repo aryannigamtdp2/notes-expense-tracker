@@ -265,9 +265,7 @@ total.innerHTML = `
   <div>Total: ${money(totals.total)}</div>
 `;
 section.appendChild(total);
-      total.className = "month-total-line";
-      total.textContent = `Total ${money(sumForMonth(key))}`;
-      section.appendChild(total);
+    
       list.appendChild(section);
     });
     if (months.length) {
