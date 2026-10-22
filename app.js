@@ -98,7 +98,10 @@
     text = text.replace(/\s*\(cash\)\s*$/i, "").trim();
   }
 
-  const match = text.match(/^(.*?)(?:\s*[.·]\s*|\s+)(?:₹\s*)?(-?\d[\d,]*(?:\.\d{1,2})?)\s*$/);
+  const match = text.match(
+    /^(.*?)(?:\s*[.·]\s*|\s+)(?:₹\s*)?(-?\d[\d,]*(?:\.\d{1,2})?)\s*$/
+  );
+
   if (!match) return { title: text, amount: null, paymentType };
 
   const title = match[1].trim().replace(/[.·]\s*$/, "").trim();
@@ -343,7 +346,14 @@ section.appendChild(total);
       if (!Array.isArray(data.expenses)) throw new Error("Invalid backup");
       if (!confirm(`Import ${data.expenses.length} expenses? Matching IDs will be replaced; other entries remain.`)) return;
       for (const item of data.expenses) {
-        if (item && item.id && typeof item.title === "string" && Number.isFinite(Number(item.amount)) && /^\d{4}-\d{2}-\d{2}$/.test(item.date)) await putExpense({ id: item.id, title: item.title, amount: Number(item.amount), date: item.date, createdAt: item.createdAt || Date.now() });
+        if (item && item.id && typeof item.title === "string" && Number.isFinite(Number(item.amount)) && /^\d{4}-\d{2}-\d{2}$/.test(item.date)) await putExpense({
+  id: item.id,
+  title: item.title,
+  amount: Number(item.amount),
+  paymentType: item.paymentType === "cash" ? "cash" : "bank",
+  date: item.date,
+  createdAt: item.createdAt || Date.now()
+});
       }
       if (data.settings) { settings = { ...settings, ...data.settings, months: [...new Set([...(settings.months || []), ...(data.settings.months || [])])] }; saveSettings(); }
       await refresh(); settingsDialog.close(); flash("Backup imported");
