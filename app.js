@@ -7,16 +7,13 @@
   const SETTINGS_KEY = "settings";
   const $ = (id) => document.getElementById(id);
   const list = $("notesList");
-  const summaryMonth = $("summaryMonth");
-  const summaryTotal = $("summaryTotal");
+
   const status = $("status");
   const settingsDialog = $("settingsDialog");
   const editDialog = $("editDialog");
   let db;
   let expenses = [];
   let settings = { autopay: 430, months: [] };
-  let activeMonth = "";
-  let observer;
   let statusTimer;
 
   const money = (value) => "₹" + Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -148,15 +145,7 @@
 
   return { bank, cash, total: bank + cash };
 }
-  function updateSummary(key) {
-    if (!key) return;
-    activeMonth = key;
-    summaryMonth.textContent = monthLabel(key);
-    const totals = sumForMonth(key);
-summaryTotal.textContent =
-  `Bank ${money(totals.bank)} · Cash ${money(totals.cash)} · Total ${money(totals.total)}`;
-    document.title = `${monthLabel(key)} · Expenses`;
-  }
+  
   function addMonth(key) {
     if (!settings.months.includes(key)) settings.months.push(key);
     settings.months.sort();
@@ -178,7 +167,8 @@ summaryTotal.textContent =
   }
   function render() {
     const months = allMonths();
-    if (observer) observer.disconnect();
+    document.title = "Expenses";
+    
     list.replaceChildren();
     months.forEach(key => {
       const section = document.createElement("section");
@@ -226,7 +216,6 @@ section.appendChild(headingRow);
         const requestedMonth = parseMonthCommand(raw, key);
         if (requestedMonth) {
           addMonth(requestedMonth);
-          updateSummary(requestedMonth);
           render();
           focusMonthInput(requestedMonth);
           return;
@@ -245,7 +234,6 @@ section.appendChild(headingRow);
           await putExpense(item);
           input.value = "";
           await refresh();
-          updateSummary(key);
           focusMonthInput(key);
         } catch (_) { flash("Could not save this entry", true); }
       });
@@ -276,16 +264,7 @@ section.appendChild(headingRow);
     
       list.appendChild(section);
     });
-    if (months.length) {
-      const current = monthKey(new Date());
-      updateSummary(months.includes(activeMonth) ? activeMonth : (months.includes(current) ? current : months[months.length - 1]));
-      observer = new IntersectionObserver((entries) => {
-        const candidates = entries.filter(entry => entry.isIntersecting)
-          .sort((a, b) => Math.abs(a.boundingClientRect.top - 65) - Math.abs(b.boundingClientRect.top - 65));
-        if (candidates[0]) updateSummary(candidates[0].target.dataset.month);
-      }, { root: null, rootMargin: "-60px 0px -65% 0px", threshold: [0, 0.01, 0.2] });
-      list.querySelectorAll(".month-section").forEach(section => observer.observe(section));
-    }
+   
   }
   async function refresh() {
     expenses = await getAll();
@@ -308,7 +287,6 @@ section.appendChild(headingRow);
     addMonth(date.slice(0, 7));
     editDialog.close();
     await refresh();
-    updateSummary(date.slice(0, 7));
     flash("Saved");
   });
   $("deleteExpense").addEventListener("click", async () => {
