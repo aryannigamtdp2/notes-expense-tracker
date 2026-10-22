@@ -3,9 +3,10 @@
 A minimal, dark, Notes-inspired expense list. Expenses are saved in IndexedDB on the device. Monthly totals update locally and include the configured recurring autopay amount.
 
 ## Features
-- Notes-like scrolling month sections
+- Notes-like chronological month sections with an entry field under each heading
+- Type a month name (for example, `November`) to create/select that month; following entries belong to that month
 - Quick entry: `Speakers. 2800`, `Lunch ₹250`, or `Coffee 250`
-- Live month total based on the month section in view
+- Small live month total based on the month section in view
 - Monthly autopay included in each month's total (default ₹430)
 - Edit/delete expenses
 - Local settings
@@ -44,7 +45,7 @@ Browser storage is persistent for normal use, but no browser-local storage is a 
 You can also use any static HTTPS host that serves these files without a build step.
 
 ## How monthly total works
-The large total follows the month section near the top of the scrolling list. It includes all recorded entries dated in that month plus the autopay amount from Settings. New expenses are dated to the current calendar date. To change the autopay amount, open the `•••` menu → Settings.
+The small total follows the month section near the top of the scrolling list. It includes all recorded entries in that month plus autopay. Each month has its own entry field, so you can add expenses directly to past months. Type a month name (such as `November` or `November 2026`) into an entry field to create/select that month. Without a year, the month is interpreted as the next occurrence after the section where you typed it. To change autopay, open the `•••` menu → Settings.
 
 ## Parsing entry amounts
 The final number is treated as the amount:
@@ -53,4 +54,4 @@ The final number is treated as the amount:
 - `Coffee ₹250`
 - `Taxi 125.50`
 
-If no amount can be detected, the app asks you to try again. Entries are recorded on the current date; use Edit to change a date.
+If no amount can be detected, the app asks you to try again. Entries are recorded within the month section where you entered them; use Edit to change the exact date.

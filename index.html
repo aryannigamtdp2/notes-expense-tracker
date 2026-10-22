@@ -21,23 +21,13 @@
     </header>
 
     <section class="summary" aria-live="polite">
-      <div class="summary-label" id="summaryMonth">September</div>
-      <div class="summary-total" id="summaryTotal">₹0</div>
-      <div class="summary-subtitle" id="summarySubtitle">Monthly total · includes autopay</div>
+      <div class="summary-month" id="summaryMonth">October 2026</div>
+      <div class="summary-total" id="summaryTotal">₹430</div>
     </section>
 
-    <section class="editor-wrap">
-      <form id="expenseForm" autocomplete="off">
-        <label class="sr-only" for="expenseInput">Add an expense</label>
-        <input id="expenseInput" type="text" placeholder="Add an expense… e.g. Speakers. 2800" enterkeyhint="done" autocapitalize="sentences" spellcheck="false">
-        <button class="add-button" type="submit" aria-label="Add expense">+</button>
-      </form>
-      <div class="entry-hint">Type a description, then a dot and amount — for example, <span>Speakers. 2800</span></div>
-      <div id="status" class="status" role="status"></div>
-    </section>
-
+    <div id="status" class="status" role="status"></div>
     <section id="notesList" class="notes-list" aria-label="Monthly expenses">
-      <div id="loading" class="loading">Loading your expenses…</div>
+      <div id="loading" class="loading">Loading…</div>
     </section>
 
     <footer class="footer">
@@ -48,35 +38,25 @@
 
   <dialog id="settingsDialog">
     <form method="dialog" class="dialog-head">
-      <div>
-        <h2>Settings</h2>
-        <p>These settings are saved on this device.</p>
-      </div>
+      <div><h2>Settings</h2></div>
       <button class="icon-button" aria-label="Close settings">×</button>
     </form>
     <div class="setting-row">
       <label for="autopayInput">Monthly autopay (₹)</label>
       <input id="autopayInput" type="number" min="0" step="1" inputmode="decimal" value="430">
     </div>
-    <p class="setting-help">This amount is included once in every month’s total. It is not added as a visible expense entry.</p>
-    <div class="setting-row">
-      <label for="startMonth">Start showing months from</label>
-      <input id="startMonth" type="month">
-    </div>
+    <p class="setting-help">Included in every month’s total.</p>
     <div class="dialog-actions">
-      <button id="saveSettings" type="button" class="primary-button">Save settings</button>
+      <button id="saveSettings" type="button" class="primary-button">Save</button>
       <button id="restoreButton" type="button" class="secondary-button">Import backup</button>
     </div>
     <input id="importFile" type="file" accept="application/json,.json" hidden>
-    <p class="setting-help warning">Keep an exported backup somewhere safe. Clearing Safari website data can erase this app’s local records.</p>
+    <p class="setting-help warning">Export a backup occasionally. Clearing Safari website data can erase local records.</p>
   </dialog>
 
   <dialog id="editDialog">
     <form method="dialog" class="dialog-head">
-      <div>
-        <h2>Edit expense</h2>
-        <p>Change the description, amount, or date.</p>
-      </div>
+      <div><h2>Edit expense</h2></div>
       <button class="icon-button" aria-label="Close editor">×</button>
     </form>
     <input id="editId" type="hidden">
@@ -87,7 +67,7 @@
     <label class="field-label" for="editDate">Date</label>
     <input id="editDate" class="dialog-input" type="date">
     <div class="dialog-actions">
-      <button id="saveEdit" type="button" class="primary-button">Save changes</button>
+      <button id="saveEdit" type="button" class="primary-button">Save</button>
       <button id="deleteExpense" type="button" class="danger-button">Delete</button>
     </div>
   </dialog>

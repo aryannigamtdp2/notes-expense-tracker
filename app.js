@@ -1,4 +1,4 @@
-/* Offline-first expense list. All records remain in this browser's local IndexedDB. */
+/* Private offline-first expense notes. Records remain in this browser's local IndexedDB. */
 (() => {
   "use strict";
   const DB_NAME = "notes-style-expenses";
@@ -6,29 +6,26 @@
   const STORE = "expenses";
   const SETTINGS_KEY = "settings";
   const $ = (id) => document.getElementById(id);
-  const form = $("expenseForm");
-  const input = $("expenseInput");
   const list = $("notesList");
   const summaryMonth = $("summaryMonth");
   const summaryTotal = $("summaryTotal");
-  const summarySubtitle = $("summarySubtitle");
   const status = $("status");
   const settingsDialog = $("settingsDialog");
   const editDialog = $("editDialog");
   let db;
   let expenses = [];
-  let settings = { autopay: 430, startMonth: "" };
+  let settings = { autopay: 430, months: [] };
   let activeMonth = "";
   let observer;
   let statusTimer;
 
   const money = (value) => "₹" + Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+  const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const monthLabel = (key) => {
     const [y, m] = key.split("-").map(Number);
     return new Date(y, m - 1, 1).toLocaleDateString("en-IN", { month: "long", year: "numeric" });
   };
-  const monthKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-  const dateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   const id = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`);
 
   function openDB() {
@@ -47,8 +44,7 @@
   }
   function getAll() {
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, "readonly");
-      const request = tx.objectStore(STORE).getAll();
+      const request = db.transaction(STORE, "readonly").objectStore(STORE).getAll();
       request.onsuccess = () => resolve(request.result || []);
       request.onerror = () => reject(request.error);
     });
@@ -71,23 +67,26 @@
     });
   }
   function saveSettings() {
-    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); }
-    catch (error) { console.error("Could not save settings", error); }
+    try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (error) { console.error(error); }
   }
   function loadSettings() {
     try {
       const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-      settings = { ...settings, ...stored };
+      settings = { ...settings, ...stored, months: Array.isArray(stored.months) ? stored.months : [] };
     } catch (_) {}
+    // Migrate months configured in the earlier version.
+    if (settings.startMonth) {
+      settings.months.push(settings.startMonth);
+      delete settings.startMonth;
+      saveSettings();
+    }
   }
   function flash(message, isError = false) {
     status.textContent = message;
     status.style.color = isError ? "#ff8d94" : "#70d7a1";
     clearTimeout(statusTimer);
-    statusTimer = setTimeout(() => { status.textContent = ""; }, 3000);
+    statusTimer = setTimeout(() => { status.textContent = ""; }, 2400);
   }
-
-  // Accepts "Speakers. 2800", "Bought keyboard 2800", and "Coffee. ₹250".
   function parseEntry(raw) {
     const text = raw.trim();
     if (!text) return null;
@@ -98,26 +97,28 @@
     if (!title || !Number.isFinite(amount) || amount < 0) return null;
     return { title, amount };
   }
-
-  function getMonths() {
-    const monthSet = new Set(expenses.map(e => e.date.slice(0, 7)));
-    const current = monthKey(new Date());
-    monthSet.add(current);
-    if (settings.startMonth) monthSet.add(settings.startMonth);
-    const all = [...monthSet].filter(Boolean).sort();
-    if (settings.startMonth) {
-      const end = all[all.length - 1] || current;
-      let cursor = settings.startMonth;
-      const [ey, em] = end.split("-").map(Number);
-      let safety = 0;
-      while (cursor <= end && safety++ < 240) {
-        monthSet.add(cursor);
-        const [y, m] = cursor.split("-").map(Number);
-        const next = new Date(y, m, 1);
-        cursor = monthKey(next);
-      }
+  function parseMonthCommand(raw, fromMonth) {
+    const text = raw.trim().replace(/[.!]+$/, "").trim();
+    const match = text.match(/^(January|February|March|April|May|June|July|August|September|October|November|December)(?:\s+(\d{4}))?$/i);
+    if (!match) return null;
+    const names = ["january","february","march","april","may","june","july","august","september","october","november","december"];
+    const month = names.indexOf(match[1].toLowerCase()) + 1;
+    let year;
+    if (match[2]) year = Number(match[2]);
+    else {
+      const [baseYear, baseMonth] = (fromMonth || monthKey(new Date())).split("-").map(Number);
+      year = baseYear;
+      // A month without a year means the next occurrence of that month after the current section.
+      if (month < baseMonth) year++;
     }
-    return [...monthSet].sort();
+    if (year < 1900 || year > 2200) return null;
+    return `${year}-${String(month).padStart(2, "0")}`;
+  }
+  function allMonths() {
+    const set = new Set(expenses.map(e => e.date.slice(0, 7)));
+    set.add(monthKey(new Date()));
+    settings.months.forEach(m => { if (/^\d{4}-\d{2}$/.test(m)) set.add(m); });
+    return [...set].sort();
   }
   function sumForMonth(key) {
     return expenses.filter(e => e.date.slice(0, 7) === key).reduce((sum, e) => sum + Number(e.amount || 0), 0) + Number(settings.autopay || 0);
@@ -126,19 +127,32 @@
     if (!key) return;
     activeMonth = key;
     summaryMonth.textContent = monthLabel(key);
-    summaryTotal.textContent = money(sumForMonth(key));
-    summarySubtitle.textContent = `Monthly total · includes ${money(settings.autopay)} autopay`;
-    document.title = `${monthLabel(key)} · ${money(sumForMonth(key))}`;
+    summaryTotal.textContent = `Total ${money(sumForMonth(key))}`;
+    document.title = `${monthLabel(key)} · Expenses`;
   }
-
+  function addMonth(key) {
+    if (!settings.months.includes(key)) settings.months.push(key);
+    settings.months.sort();
+    saveSettings();
+  }
+  function dateForMonth(key) {
+    const [year, month] = key.split("-").map(Number);
+    const today = new Date();
+    const lastDay = new Date(year, month, 0).getDate();
+    const day = Math.min(today.getDate(), lastDay);
+    return `${key}-${String(day).padStart(2, "0")}`;
+  }
+  function focusMonthInput(key) {
+    requestAnimationFrame(() => {
+      const section = list.querySelector(`[data-month="${key}"]`);
+      section?.scrollIntoView({ behavior: "smooth", block: "start" });
+      section?.querySelector(".month-input")?.focus({ preventScroll: true });
+    });
+  }
   function render() {
-    const months = getMonths().reverse();
-    list.replaceChildren();
+    const months = allMonths();
     if (observer) observer.disconnect();
-    if (!months.length) {
-      list.innerHTML = '<div class="empty-month">No expenses yet. Add one above.</div>';
-      return;
-    }
+    list.replaceChildren();
     months.forEach(key => {
       const section = document.createElement("section");
       section.className = "month-section";
@@ -146,77 +160,91 @@
       const heading = document.createElement("h2");
       heading.className = "month-heading";
       heading.textContent = monthLabel(key);
+      heading.addEventListener("click", () => updateSummary(key));
       section.appendChild(heading);
 
+      const form = document.createElement("form");
+      form.className = "month-form";
+      form.autocomplete = "off";
+      const input = document.createElement("input");
+      input.className = "month-input";
+      input.type = "text";
+      input.placeholder = "Add expense…";
+      input.enterKeyHint = "done";
+      input.autocapitalize = "sentences";
+      input.spellcheck = false;
+      input.setAttribute("aria-label", `Add expense to ${monthLabel(key)}`);
+      const add = document.createElement("button");
+      add.type = "submit";
+      add.className = "add-button";
+      add.textContent = "+";
+      add.setAttribute("aria-label", `Add to ${monthLabel(key)}`);
+      form.append(input, add);
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const raw = input.value.trim();
+        if (!raw) return;
+        const requestedMonth = parseMonthCommand(raw, key);
+        if (requestedMonth) {
+          addMonth(requestedMonth);
+          updateSummary(requestedMonth);
+          render();
+          focusMonthInput(requestedMonth);
+          return;
+        }
+        const parsed = parseEntry(raw);
+        if (!parsed || parsed.amount === null) { flash("Enter description and amount", true); return; }
+        const item = { id: id(), title: parsed.title, amount: parsed.amount, date: dateForMonth(key), createdAt: Date.now() };
+        try {
+          await putExpense(item);
+          input.value = "";
+          await refresh();
+          updateSummary(key);
+          focusMonthInput(key);
+        } catch (_) { flash("Could not save this entry", true); }
+      });
+      section.appendChild(form);
+
       const monthExpenses = expenses.filter(e => e.date.slice(0, 7) === key)
-        .sort((a, b) => b.date.localeCompare(a.date) || (b.createdAt || 0) - (a.createdAt || 0));
-      if (!monthExpenses.length) {
-        const empty = document.createElement("div");
-        empty.className = "empty-month";
-        empty.textContent = "No expenses recorded";
-        section.appendChild(empty);
-      } else {
-        monthExpenses.forEach(item => {
-          const row = document.createElement("div");
-          row.className = "expense-row";
-          const title = document.createElement("div");
-          title.className = "expense-title";
-          title.textContent = item.title;
-          const amount = document.createElement("div");
-          amount.className = "expense-amount";
-          amount.textContent = money(item.amount);
-          const edit = document.createElement("button");
-          edit.type = "button";
-          edit.textContent = "Edit";
-          edit.setAttribute("aria-label", `Edit ${item.title}`);
-          edit.addEventListener("click", () => openEdit(item));
-          row.append(title, amount, edit);
-          section.appendChild(row);
-        });
-      }
-      const monthTotal = document.createElement("div");
-      monthTotal.className = "month-total-line";
-      monthTotal.textContent = `Total including autopay: ${money(sumForMonth(key))}`;
-      section.appendChild(monthTotal);
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      monthExpenses.forEach(item => {
+        const row = document.createElement("div");
+        row.className = "expense-row";
+        const title = document.createElement("div");
+        title.className = "expense-title";
+        title.textContent = item.title;
+        const amount = document.createElement("div");
+        amount.className = "expense-amount";
+        amount.textContent = money(item.amount);
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.textContent = "Edit";
+        edit.setAttribute("aria-label", `Edit ${item.title}`);
+        edit.addEventListener("click", () => openEdit(item));
+        row.append(title, amount, edit);
+        section.appendChild(row);
+      });
+      const total = document.createElement("div");
+      total.className = "month-total-line";
+      total.textContent = `Total ${money(sumForMonth(key))}`;
+      section.appendChild(total);
       list.appendChild(section);
     });
-
-    observer = new IntersectionObserver((entries) => {
-      const candidates = entries.filter(entry => entry.isIntersecting)
-        .sort((a, b) => Math.abs(a.boundingClientRect.top - 210) - Math.abs(b.boundingClientRect.top - 210));
-      if (candidates[0]) updateSummary(candidates[0].target.dataset.month);
-    }, { root: null, rootMargin: "-190px 0px -60% 0px", threshold: [0, 0.01, 0.2] });
-    list.querySelectorAll(".month-section").forEach(section => observer.observe(section));
-    const now = monthKey(new Date());
-    updateSummary(months.includes(now) ? now : months[0]);
+    if (months.length) {
+      const current = monthKey(new Date());
+      updateSummary(months.includes(activeMonth) ? activeMonth : (months.includes(current) ? current : months[months.length - 1]));
+      observer = new IntersectionObserver((entries) => {
+        const candidates = entries.filter(entry => entry.isIntersecting)
+          .sort((a, b) => Math.abs(a.boundingClientRect.top - 65) - Math.abs(b.boundingClientRect.top - 65));
+        if (candidates[0]) updateSummary(candidates[0].target.dataset.month);
+      }, { root: null, rootMargin: "-60px 0px -65% 0px", threshold: [0, 0.01, 0.2] });
+      list.querySelectorAll(".month-section").forEach(section => observer.observe(section));
+    }
   }
-
   async function refresh() {
     expenses = await getAll();
-    expenses.sort((a, b) => a.date.localeCompare(b.date) || (a.createdAt || 0) - (b.createdAt || 0));
     render();
   }
-
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
-    const parsed = parseEntry(input.value);
-    if (!parsed) { flash("Enter a description and amount, e.g. Speakers. 2800", true); return; }
-    if (parsed.amount === null) {
-      flash("I couldn't find an amount. Try: Speakers. 2800", true);
-      return;
-    }
-    const now = new Date();
-    const item = { id: id(), title: parsed.title, amount: parsed.amount, date: dateKey(now), createdAt: Date.now() };
-    try {
-      await putExpense(item);
-      input.value = "";
-      await refresh();
-      updateSummary(monthKey(now));
-      flash("Saved on this device");
-      input.focus();
-    } catch (_) { flash("Could not save this entry. Export a backup and try again.", true); }
-  });
-
   function openEdit(item) {
     $("editId").value = item.id;
     $("editTitle").value = item.title;
@@ -229,47 +257,43 @@
     const title = $("editTitle").value.trim();
     const amount = Number($("editAmount").value);
     const date = $("editDate").value;
-    if (!item || !title || !Number.isFinite(amount) || amount < 0 || !date) { flash("Check the description, amount, and date.", true); return; }
+    if (!item || !title || !Number.isFinite(amount) || amount < 0 || !date) { flash("Check description, amount, and date", true); return; }
     await putExpense({ ...item, title, amount, date });
+    addMonth(date.slice(0, 7));
     editDialog.close();
     await refresh();
-    flash("Changes saved");
+    updateSummary(date.slice(0, 7));
+    flash("Saved");
   });
   $("deleteExpense").addEventListener("click", async () => {
     const idValue = $("editId").value;
-    if (!confirm("Delete this expense permanently from this device?")) return;
+    if (!confirm("Delete this expense from this device?")) return;
     await deleteExpense(idValue);
     editDialog.close();
     await refresh();
-    flash("Expense deleted");
+    flash("Deleted");
   });
-
   $("menuButton").addEventListener("click", () => {
     $("autopayInput").value = settings.autopay;
-    $("startMonth").value = settings.startMonth || "";
     settingsDialog.showModal();
   });
   $("saveSettings").addEventListener("click", () => {
     const value = Number($("autopayInput").value);
-    if (!Number.isFinite(value) || value < 0) { flash("Enter a valid autopay amount.", true); return; }
+    if (!Number.isFinite(value) || value < 0) { flash("Enter a valid autopay amount", true); return; }
     settings.autopay = value;
-    settings.startMonth = $("startMonth").value || "";
     saveSettings();
     settingsDialog.close();
     render();
-    flash("Settings saved");
+    flash("Saved");
   });
-
   function exportBackup() {
-    const payload = { app: "Notes-style Expenses", version: 1, exportedAt: new Date().toISOString(), settings, expenses };
+    const payload = { app: "Notes-style Expenses", version: 2, exportedAt: new Date().toISOString(), settings, expenses };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = `expenses-backup-${dateKey(new Date())}.json`;
-    document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
-    flash("Backup export started");
+    a.href = url; a.download = `expenses-backup-${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    flash("Backup exported");
   }
   $("backupButton").addEventListener("click", exportBackup);
   $("restoreButton").addEventListener("click", () => $("importFile").click());
@@ -279,35 +303,31 @@
     try {
       const data = JSON.parse(await file.text());
       if (!Array.isArray(data.expenses)) throw new Error("Invalid backup");
-      if (!confirm(`Import ${data.expenses.length} expenses? Existing entries with matching IDs will be replaced; other entries will remain.`)) return;
+      if (!confirm(`Import ${data.expenses.length} expenses? Matching IDs will be replaced; other entries remain.`)) return;
       for (const item of data.expenses) {
-        if (item && item.id && typeof item.title === "string" && Number.isFinite(Number(item.amount)) && /^\d{4}-\d{2}-\d{2}$/.test(item.date)) {
-          await putExpense({ id: item.id, title: item.title, amount: Number(item.amount), date: item.date, createdAt: item.createdAt || Date.now() });
-        }
+        if (item && item.id && typeof item.title === "string" && Number.isFinite(Number(item.amount)) && /^\d{4}-\d{2}-\d{2}$/.test(item.date)) await putExpense({ id: item.id, title: item.title, amount: Number(item.amount), date: item.date, createdAt: item.createdAt || Date.now() });
       }
-      if (data.settings) { settings = { ...settings, ...data.settings }; saveSettings(); }
-      await refresh();
-      settingsDialog.close();
-      flash("Backup imported");
-    } catch (_) { flash("That file doesn't look like a valid app backup.", true); }
+      if (data.settings) { settings = { ...settings, ...data.settings, months: [...new Set([...(settings.months || []), ...(data.settings.months || [])])] }; saveSettings(); }
+      await refresh(); settingsDialog.close(); flash("Backup imported");
+    } catch (_) { flash("Invalid backup file", true); }
     finally { event.target.value = ""; }
   });
-
   async function init() {
     loadSettings();
     try {
       db = await openDB();
-      await refresh();
+      expenses = await getAll();
+      // Ensure any month containing existing data is retained as a visible heading.
+      expenses.forEach(e => { const m = e.date.slice(0, 7); if (!settings.months.includes(m)) settings.months.push(m); });
+      saveSettings();
       $("loading")?.remove();
-      $("storageStatus").textContent = "Saved on this device";
+      render();
     } catch (error) {
       console.error(error);
-      list.innerHTML = '<div class="empty-month">Local storage could not be opened. Please use a modern browser and reload.</div>';
+      list.innerHTML = '<div class="empty-month">Local storage unavailable. Reload the app.</div>';
       flash("Storage unavailable", true);
     }
-    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
-      navigator.serviceWorker.register("./service-worker.js").catch(err => console.warn("Offline setup unavailable", err));
-    }
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("./service-worker.js").catch(err => console.warn(err));
   }
   init();
 })();
