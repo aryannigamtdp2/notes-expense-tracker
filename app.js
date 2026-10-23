@@ -13,7 +13,7 @@
   const editDialog = $("editDialog");
   let db;
   let expenses = [];
-  let settings = { autopay: 430, months: [] };
+  let settings = { autopay: 430, months: [], hiddenMonths: [], monthSorts: {} };
   let statusTimer;
 
   const money = (value) => "₹" + Number(value || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
@@ -63,13 +63,39 @@
       tx.onerror = () => reject(tx.error);
     });
   }
+  function deleteMonthExpenses(key) {
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(STORE, "readwrite");
+      const range = IDBKeyRange.bound(`${key}-01`, `${key}-31`);
+      const request = tx.objectStore(STORE).index("date").openCursor(range);
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (cursor) {
+          cursor.delete();
+          cursor.continue();
+        }
+      };
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
+    });
+  }
   function saveSettings() {
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (error) { console.error(error); }
   }
   function loadSettings() {
     try {
       const stored = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "{}");
-      settings = { ...settings, ...stored, months: Array.isArray(stored.months) ? stored.months : [] };
+      const monthSorts = stored.monthSorts && typeof stored.monthSorts === "object" && !Array.isArray(stored.monthSorts)
+        ? Object.fromEntries(Object.entries(stored.monthSorts).filter(([, sort]) => ["amount-asc", "amount-desc"].includes(sort)))
+        : {};
+      settings = {
+        ...settings,
+        ...stored,
+        months: Array.isArray(stored.months) ? stored.months : [],
+        hiddenMonths: Array.isArray(stored.hiddenMonths) ? stored.hiddenMonths : [],
+        monthSorts
+      };
     } catch (_) {}
     // Migrate months configured in the earlier version.
     if (settings.startMonth) {
@@ -126,9 +152,11 @@
     return `${year}-${String(month).padStart(2, "0")}`;
   }
   function allMonths() {
-    const set = new Set(expenses.map(e => e.date.slice(0, 7)));
-    set.add(monthKey(new Date()));
-    settings.months.forEach(m => { if (/^\d{4}-\d{2}$/.test(m)) set.add(m); });
+    const hidden = new Set(settings.hiddenMonths);
+    const set = new Set(expenses.map(e => e.date.slice(0, 7)).filter(m => !hidden.has(m)));
+    const currentMonth = monthKey(new Date());
+    if (!hidden.has(currentMonth)) set.add(currentMonth);
+    settings.months.forEach(m => { if (/^\d{4}-\d{2}$/.test(m) && !hidden.has(m)) set.add(m); });
     return [...set].sort();
   }
   function sumForMonth(key) {
@@ -147,9 +175,13 @@
 }
   
   function addMonth(key) {
+    settings.hiddenMonths = settings.hiddenMonths.filter(m => m !== key);
     if (!settings.months.includes(key)) settings.months.push(key);
     settings.months.sort();
     saveSettings();
+  }
+  function sortForMonth(key) {
+    return settings.monthSorts[key] || "default";
   }
   function dateForMonth(key) {
     const [year, month] = key.split("-").map(Number);
@@ -181,6 +213,29 @@ const heading = document.createElement("h2");
 heading.className = "month-heading";
 heading.textContent = monthLabel(key);
 
+const deleteMonth = document.createElement("button");
+deleteMonth.type = "button";
+deleteMonth.className = "month-delete-button";
+deleteMonth.textContent = "Delete";
+deleteMonth.setAttribute("aria-label", `Delete ${monthLabel(key)}`);
+deleteMonth.title = `Delete ${monthLabel(key)}`;
+deleteMonth.addEventListener("click", async () => {
+  if (!confirm("Are you sure you want to delete this month?")) return;
+  try {
+    await deleteMonthExpenses(key);
+    expenses = expenses.filter(e => e.date.slice(0, 7) !== key);
+    settings.months = settings.months.filter(m => m !== key);
+    settings.hiddenMonths = [...new Set([...settings.hiddenMonths, key])];
+    delete settings.monthSorts[key];
+    saveSettings();
+    render();
+    flash("Month deleted");
+  } catch (_) {
+    flash("Could not delete this month", true);
+  }
+});
+headingRow.append(heading, deleteMonth);
+
 const monthTotals = sumForMonth(key);
 const monthSummary = document.createElement("div");
 monthSummary.className = "month-inline-summary";
@@ -189,8 +244,8 @@ monthSummary.innerHTML = `
   <div>Cash ${money(monthTotals.cash)}</div>
   <div>Total ${money(monthTotals.total)}</div>
 `;
-headingRow.append(heading, monthSummary);
 section.appendChild(headingRow);
+section.appendChild(monthSummary);
 
       const form = document.createElement("form");
       form.className = "month-form";
@@ -239,14 +294,42 @@ section.appendChild(headingRow);
       });
       section.appendChild(form);
 
+      const sortRow = document.createElement("div");
+      sortRow.className = "month-sort-row";
+      const sortSelect = document.createElement("select");
+      sortSelect.className = "month-sort-select";
+      sortSelect.setAttribute("aria-label", `Sort expenses in ${monthLabel(key)}`);
+      [
+        ["default", "Default order"],
+        ["amount-asc", "Low to high"],
+        ["amount-desc", "High to low"]
+      ].forEach(([value, label]) => {
+        const option = document.createElement("option");
+        option.value = value;
+        option.textContent = label;
+        sortSelect.appendChild(option);
+      });
+      sortSelect.value = sortForMonth(key);
+      sortSelect.addEventListener("change", () => {
+        if (sortSelect.value === "default") delete settings.monthSorts[key];
+        else settings.monthSorts[key] = sortSelect.value;
+        saveSettings();
+        render();
+      });
+      sortRow.appendChild(sortSelect);
+      section.appendChild(sortRow);
+
       const monthExpenses = expenses.filter(e => e.date.slice(0, 7) === key)
         .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+      const sort = sortForMonth(key);
+      if (sort === "amount-asc") monthExpenses.sort((a, b) => a.amount - b.amount);
+      if (sort === "amount-desc") monthExpenses.sort((a, b) => b.amount - a.amount);
       monthExpenses.forEach(item => {
         const row = document.createElement("div");
         row.className = "expense-row";
         const title = document.createElement("div");
         title.className = "expense-title";
-        title.textContent = item.title;
+        title.textContent = item.paymentType === "cash" ? `${item.title} (cash)` : item.title;
         const amount = document.createElement("div");
         amount.className = "expense-amount";
         amount.textContent = money(item.amount);
@@ -258,10 +341,6 @@ section.appendChild(headingRow);
         row.append(title, amount, edit);
         section.appendChild(row);
       });
-      const totals = sumForMonth(key);
-
-
-    
       list.appendChild(section);
     });
    
@@ -274,6 +353,7 @@ section.appendChild(headingRow);
     $("editId").value = item.id;
     $("editTitle").value = item.title;
     $("editAmount").value = item.amount;
+    $("editCash").checked = item.paymentType === "cash";
     $("editDate").value = item.date;
     editDialog.showModal();
   }
@@ -283,7 +363,7 @@ section.appendChild(headingRow);
     const amount = Number($("editAmount").value);
     const date = $("editDate").value;
     if (!item || !title || !Number.isFinite(amount) || amount < 0 || !date) { flash("Check description, amount, and date", true); return; }
-    await putExpense({ ...item, title, amount, date });
+    await putExpense({ ...item, title, amount, paymentType: $("editCash").checked ? "cash" : "bank", date });
     addMonth(date.slice(0, 7));
     editDialog.close();
     await refresh();
@@ -338,7 +418,23 @@ section.appendChild(headingRow);
   createdAt: item.createdAt || Date.now()
 });
       }
-      if (data.settings) { settings = { ...settings, ...data.settings, months: [...new Set([...(settings.months || []), ...(data.settings.months || [])])] }; saveSettings(); }
+      if (data.settings) {
+        const importedSorts = data.settings.monthSorts && typeof data.settings.monthSorts === "object" && !Array.isArray(data.settings.monthSorts)
+          ? Object.fromEntries(Object.entries(data.settings.monthSorts).filter(([, sort]) => ["amount-asc", "amount-desc"].includes(sort)))
+          : {};
+        settings = {
+          ...settings,
+          ...data.settings,
+          months: [...new Set([...settings.months, ...(Array.isArray(data.settings.months) ? data.settings.months : [])])],
+          hiddenMonths: [...new Set([...settings.hiddenMonths, ...(Array.isArray(data.settings.hiddenMonths) ? data.settings.hiddenMonths : [])])],
+          monthSorts: { ...settings.monthSorts, ...importedSorts }
+        };
+      }
+      const importedMonths = new Set(data.expenses
+        .filter(item => item && item.id && typeof item.title === "string" && Number.isFinite(Number(item.amount)) && /^\d{4}-\d{2}-\d{2}$/.test(item.date))
+        .map(item => item.date.slice(0, 7)));
+      settings.hiddenMonths = settings.hiddenMonths.filter(month => !importedMonths.has(month));
+      saveSettings();
       await refresh(); settingsDialog.close(); flash("Backup imported");
     } catch (_) { flash("Invalid backup file", true); }
     finally { event.target.value = ""; }

@@ -20,11 +20,6 @@
       <button id="menuButton" class="icon-button" aria-label="Open settings" title="Settings">•••</button>
     </header>
 
-    <section class="summary" aria-live="polite">
-      <div class="summary-month" id="summaryMonth">October 2026</div>
-      <div class="summary-total" id="summaryTotal">₹430</div>
-    </section>
-
     <div id="status" class="status" role="status"></div>
     <section id="notesList" class="notes-list" aria-label="Monthly expenses">
       <div id="loading" class="loading">Loading…</div>
@@ -64,6 +59,10 @@
     <input id="editTitle" class="dialog-input" type="text">
     <label class="field-label" for="editAmount">Amount (₹)</label>
     <input id="editAmount" class="dialog-input" type="number" min="0" step="0.01" inputmode="decimal">
+    <label class="cash-option" for="editCash">
+      <input id="editCash" type="checkbox">
+      <span>Cash</span>
+    </label>
     <label class="field-label" for="editDate">Date</label>
     <input id="editDate" class="dialog-input" type="date">
     <div class="dialog-actions">
