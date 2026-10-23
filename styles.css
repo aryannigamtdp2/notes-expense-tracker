@@ -23,7 +23,7 @@ button { -webkit-tap-highlight-color: transparent; cursor: pointer; }
 .month-section { scroll-margin-top: 65px; padding: 18px 0 20px; border-bottom: 1px solid #1e1e20; }
 .month-heading-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
 .month-heading { min-width: 0; font-size: 25px; line-height: 1.25; letter-spacing: -.55px; font-weight: 700; margin: 0; }
-.month-delete-button { flex: 0 0 auto; width: 36px; min-height: 36px; border: 1px solid #5b2024; border-radius: 8px; background: #241416; color: #ffb7bb; padding: 4px; font-size: 15px; line-height: 1; }
+.month-delete-button { flex: 0 0 auto; width: 32px; min-height: 32px; border: 1px solid #5b2024; border-radius: 8px; background: #241416; color: #ffb7bb; padding: 4px; font-size: 12px; line-height: 1; }
 .month-inline-summary { margin-bottom: 12px; font-size: 13px; text-align: right; }
 .month-form { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; }
 .month-sort-row { display: flex; justify-content: flex-end; margin: 0 0 6px; }
