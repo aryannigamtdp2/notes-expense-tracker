@@ -216,7 +216,7 @@ heading.textContent = monthLabel(key);
 const deleteMonth = document.createElement("button");
 deleteMonth.type = "button";
 deleteMonth.className = "month-delete-button";
-deleteMonth.textContent = "Delete";
+deleteMonth.textContent = "🗑";
 deleteMonth.setAttribute("aria-label", `Delete ${monthLabel(key)}`);
 deleteMonth.title = `Delete ${monthLabel(key)}`;
 deleteMonth.addEventListener("click", async () => {
